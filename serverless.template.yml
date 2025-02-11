@@ -1,0 +1,102 @@
+service: payment-service
+
+provider:
+  name: aws
+  runtime: nodejs22.x
+  stage: dev
+  region: us-east-1
+  environment:
+    EVENT_BUS_NAME: ${self:service}-${self:provider.stage}-event-bus
+    SES_VERIFIED_EMAIL: user@example.com
+  iam:
+    role:
+      statements:
+        - Effect: Allow
+          Action:
+            - sqs:SendMessage
+            - sqs:ReceiveMessage
+            - sqs:DeleteMessage
+          Resource:
+            - arn:aws:sqs:${self:provider.region}:${aws:accountId}:vehicle-catalog-service-queue-${self:provider.stage}
+        - Effect: Allow
+          Action:
+            - events:PutEvents
+          Resource:
+            - arn:aws:events:${self:provider.region}:${aws:accountId}:event-bus/${self:service}-${self:provider.stage}-event-bus
+        - Effect: Allow
+          Action:
+            - ses:SendEmail
+            - ses:SendTemplatedEmail
+          Resource: "*"
+        - Effect: Allow
+          Action:
+            - "events:PutEvents"
+          Resource: "*"
+        - Effect: Allow
+          Action:
+            - sns:Publish
+          Resource:
+            - "*"
+        - Effect: Allow
+          Action:
+            - "events:PutRule"
+            - "events:PutTargets"
+          Resource: "*"
+        - Effect: Allow
+          Action:
+            - ssm:GetParameter
+          Resource:
+            - !Sub "arn:aws:ssm:${aws:region}:${aws:accountId}:parameter/${self:service}/${self:provider.stage}/ses-verified-email"
+
+functions:
+  paymentCreation:
+    handler: src/events/PaymentCreation.handler
+    description: Process payment data by SQS event
+    environment:
+      SQS_SALES_AND_RESERVE_URL: https://sqs.${self:provider.region}.amazonaws.com/${aws:accountId}/vehicle-catalog-service-queue-${self:provider.stage}
+      USE_MOCK_GATEWAY: true
+      EVENT_BUS_NAME: ${self:service}-${self:provider.stage}-event-bus
+      SES_VERIFIED_EMAIL: user@example.com
+    events:
+      - sqs:
+          arn: arn:aws:sqs:${self:provider.region}:${aws:accountId}:vehicle-catalog-service-queue-${self:provider.stage}
+          batchSize: 10
+
+  paymentProcessing:
+    handler: src/events/PaymentProcessing.handler
+    environment:
+      EVENT_BUS_NAME: ${self:service}-${self:provider.stage}-event-bus
+      SES_VERIFIED_EMAIL: user@example.com
+    events:
+      - eventBridge:
+          eventBus: ${self:service}-${self:provider.stage}-event-bus
+          pattern:
+            source:
+              - payment.service
+            detail-type:
+              - PaymentCreated
+              - PaymentCancelled
+  userActionHandler:
+    handler: src/handlers/UserAction.handler
+    events:
+      - http:
+          path: /payments/confirm
+          method: post
+          cors: true
+
+resources:
+  Resources:
+    PaymentNotificationsTopic:
+      Type: AWS::SNS::Topic
+      Properties:
+        TopicName: ${self:service}-notifications-${self:provider.stage}
+        Subscription:
+          - Protocol: email
+            Endpoint: user@example.com
+
+    SESVerifiedEmailParameter:
+      Type: AWS::SSM::Parameter
+      Properties:
+        Name: "/${self:service}/${self:provider.stage}/ses-verified-email"
+        Type: String
+        Value: "user@example.com"
