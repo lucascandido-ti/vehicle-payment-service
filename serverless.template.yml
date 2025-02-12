@@ -17,7 +17,7 @@ provider:
             - sqs:ReceiveMessage
             - sqs:DeleteMessage
           Resource:
-            - arn:aws:sqs:${self:provider.region}:${aws:accountId}:vehicle-catalog-service-queue-${self:provider.stage}
+            - arn:aws:sqs:${self:provider.region}:${aws:accountId}:sales-and-reservations-request-sale-queue-${self:provider.stage}
         - Effect: Allow
           Action:
             - events:PutEvents
@@ -53,14 +53,14 @@ functions:
     handler: src/events/PaymentCreation.handler
     description: Process payment data by SQS event
     environment:
-      SQS_SALES_AND_RESERVE_URL: https://sqs.${self:provider.region}.amazonaws.com/${aws:accountId}/vehicle-catalog-service-queue-${self:provider.stage}
+      SQS_SALES_AND_RESERVE_URL: https://sqs.${self:provider.region}.amazonaws.com/${aws:accountId}/sales-and-reservations-request-sale-queue-${self:provider.stage}
       USE_MOCK_GATEWAY: true
       EVENT_BUS_NAME: ${self:service}-${self:provider.stage}-event-bus
       SES_VERIFIED_EMAIL: user@example.com
     events:
       - sqs:
-          arn: arn:aws:sqs:${self:provider.region}:${aws:accountId}:vehicle-catalog-service-queue-${self:provider.stage}
-          batchSize: 10
+          arn: arn:aws:sqs:${self:provider.region}:${aws:accountId}:sales-and-reservations-request-sale-queue-${self:provider.stage}
+          batchSize: 3
 
   paymentProcessing:
     handler: src/events/PaymentProcessing.handler
